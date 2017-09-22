@@ -1,6 +1,7 @@
 package authapi
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -12,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/duosecurity/duo_api_golang"
+	"github.com/bradhiggins/duo_api_golang"
 )
 
 func buildAuthApi(url string, proxy func(*http.Request) (*url.URL, error)) *AuthApi {
@@ -29,6 +30,18 @@ func buildAuthApi(url string, proxy func(*http.Request) (*url.URL, error)) *Auth
 		duoapi.SetProxy(proxy)))
 }
 
+func buildAuthApiWithoutTimeout(url string) *AuthApi {
+	ikey := "eyekey"
+	skey := "esskey"
+	host := strings.Split(url, "//")[1]
+	userAgent := "GoTestClient"
+	return NewAuthApi(*duoapi.NewDuoApi(ikey,
+		skey,
+		host,
+		userAgent,
+		duoapi.SetInsecure()))
+}
+
 func getBodyParams(r *http.Request) (url.Values, error) {
 	body, err := ioutil.ReadAll(r.Body)
 	r.Body.Close()
@@ -37,6 +50,70 @@ func getBodyParams(r *http.Request) (url.Values, error) {
 	}
 	req_params, err := url.ParseQuery(string(body))
 	return req_params, err
+}
+
+// Cancel the call immeditely. Server takes 15 seconds to respond. Verify
+// that the client cancels the call before the 15 second server response.
+func TestPingCancel(t *testing.T) {
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(15 * time.Second)
+	}))
+
+	duo := buildAuthApiWithoutTimeout(ts.URL)
+
+	start := time.Now()
+	ctx, cancel := context.WithCancel(context.Background())
+	type result struct {
+		res *CheckResult
+		err error
+	}
+	c := make(chan result)
+	go func() {
+		_, err := duo.PingWithContext(ctx)
+		res := result{nil, err}
+		c <- res
+	}()
+	cancel()
+	res := <-c
+	duration := time.Since(start)
+	if duration.Seconds() > 2 {
+		t.Errorf("Timeout took %f seconds", duration.Seconds())
+	}
+	if res.err == nil {
+		t.Error("Expected cancellation error.")
+	}
+}
+
+// Cancel the call immeditely. Server takes 15 seconds to respond. Verify
+// that the client cancels the call before the 15 second server response.
+func TestCheckCancel(t *testing.T) {
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(15 * time.Second)
+	}))
+
+	duo := buildAuthApiWithoutTimeout(ts.URL)
+
+	start := time.Now()
+	ctx, cancel := context.WithCancel(context.Background())
+	type result struct {
+		res *CheckResult
+		err error
+	}
+	c := make(chan result)
+	go func() {
+		_, err := duo.CheckWithContext(ctx)
+		res := result{nil, err}
+		c <- res
+	}()
+	cancel()
+	res := <-c
+	duration := time.Since(start)
+	if duration.Seconds() > 2 {
+		t.Errorf("Timeout took %f seconds", duration.Seconds())
+	}
+	if res.err == nil {
+		t.Error("Expected cancellation error.")
+	}
 }
 
 // Timeouts are set to 1 second.  Take 15 seconds to respond and verify
@@ -52,7 +129,7 @@ func TestTimeout(t *testing.T) {
 	_, err := duo.Ping()
 	duration := time.Since(start)
 	if duration.Seconds() > 2 {
-		t.Error("Timeout took %d seconds", duration.Seconds())
+		t.Errorf("Timeout took %f seconds", duration.Seconds())
 	}
 	if err == nil {
 		t.Error("Expected timeout error.")

@@ -1,6 +1,7 @@
 package duoapi
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/tls"
@@ -170,7 +171,8 @@ func (duoapi *DuoApi) buildOptions(options ...DuoApiOption) *requestOptions {
 //         Duo Rest API call should timeout or not.
 //
 // Example: duo.Call("GET", "/auth/v2/ping", nil, duoapi.UseTimeout)
-func (duoapi *DuoApi) Call(method string,
+func (duoapi *DuoApi) CallWithContext(ctx context.Context,
+	method string,
 	uri string,
 	params url.Values,
 	options ...DuoApiOption) (*http.Response, []byte, error) {
@@ -191,6 +193,7 @@ func (duoapi *DuoApi) Call(method string,
 	if err != nil {
 		return nil, nil, err
 	}
+	request = request.WithContext(ctx)
 	resp, err := client.Do(request)
 	var body []byte
 	if err == nil {
@@ -198,6 +201,22 @@ func (duoapi *DuoApi) Call(method string,
 		resp.Body.Close()
 	}
 	return resp, body, err
+}
+
+// Make an unsigned Duo Rest API call.  See Duo's online documentation
+// for the available REST API's.
+// method is POST or GET
+// uri is the URI of the Duo Rest call
+// params HTTP query parameters to include in the call.
+// options Optional parameters.  Use UseTimeout to toggle whether the
+//         Duo Rest API call should timeout or not.
+//
+// Example: duo.Call("GET", "/auth/v2/ping", nil, duoapi.UseTimeout)
+func (duoapi *DuoApi) Call(method string,
+	uri string,
+	params url.Values,
+	options ...DuoApiOption) (*http.Response, []byte, error) {
+	return duoapi.CallWithContext(context.Background(), method, uri, params, options...)
 }
 
 // Make a signed Duo Rest API call.  See Duo's online documentation
@@ -209,7 +228,8 @@ func (duoapi *DuoApi) Call(method string,
 //         Duo Rest API call should timeout or not.
 //
 // Example: duo.SignedCall("GET", "/auth/v2/check", nil, duoapi.UseTimeout)
-func (duoapi *DuoApi) SignedCall(method string,
+func (duoapi *DuoApi) SignedCallWithContext(ctx context.Context,
+	method string,
 	uri string,
 	params url.Values,
 	options ...DuoApiOption) (*http.Response, []byte, error) {
@@ -233,6 +253,7 @@ func (duoapi *DuoApi) SignedCall(method string,
 	if err != nil {
 		return nil, nil, err
 	}
+	request = request.WithContext(ctx)
 	request.Header.Set("Authorization", auth_sig)
 	request.Header.Set("Date", now)
 
@@ -252,6 +273,22 @@ func (duoapi *DuoApi) SignedCall(method string,
 		resp.Body.Close()
 	}
 	return resp, body, err
+}
+
+// Make a signed Duo Rest API call.  See Duo's online documentation
+// for the available REST API's.
+// method is POST or GET
+// uri is the URI of the Duo Rest call
+// params HTTP query parameters to include in the call.
+// options Optional parameters.  Use UseTimeout to toggle whether the
+//         Duo Rest API call should timeout or not.
+//
+// Example: duo.SignedCall("GET", "/auth/v2/check", nil, duoapi.UseTimeout)
+func (duoapi *DuoApi) SignedCall(method string,
+	uri string,
+	params url.Values,
+	options ...DuoApiOption) (*http.Response, []byte, error) {
+	return duoapi.SignedCallWithContext(context.Background(), method, uri, params, options...)
 }
 
 const duoPinnedCert string = `
